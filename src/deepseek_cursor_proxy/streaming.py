@@ -235,12 +235,15 @@ class CursorReasoningDisplayAdapter:
 
             rc = delta.get("reasoning_content")
             if isinstance(rc, str) and rc:
+                # Only the first fragment opens the blockquote (`> 💭`). Later
+                # fragments append in the same paragraph; prefixing each chunk
+                # with `> ` breaks token-by-token streams (`The> user> wants`).
                 quoted = rc.replace("\n", "\n> ")
                 if index not in self._open_choices:
                     parts.append(f"> 💭 {quoted}")
                     self._open_choices.add(index)
                 else:
-                    parts.append(f"> {quoted}")
+                    parts.append(quoted)
 
             existing_content = delta.get("content")
             ec_str = existing_content if isinstance(existing_content, str) else ""

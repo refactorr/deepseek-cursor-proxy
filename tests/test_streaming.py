@@ -365,6 +365,16 @@ class CursorReasoningDisplayAdapterTests(unittest.TestCase):
             "\n\nFinal answer.",
         )
 
+    def test_streaming_reasoning_fragments_only_open_blockquote_once(self) -> None:
+        """Token-sized reasoning deltas must not each get a new `> ` prefix."""
+        c0 = {"choices": [{"index": 0, "delta": {"reasoning_content": "The"}}]}
+        c1 = {"choices": [{"index": 0, "delta": {"reasoning_content": " user"}}]}
+        adapter = CursorReasoningDisplayAdapter()
+        adapter.rewrite_chunk(c0)
+        adapter.rewrite_chunk(c1)
+        self.assertEqual(c0["choices"][0]["delta"]["content"], "> 💭 The")
+        self.assertEqual(c1["choices"][0]["delta"]["content"], " user")
+
     def test_closes_thinking_block_before_tool_calls(self) -> None:
         adapter = CursorReasoningDisplayAdapter(collapsible=True)
         adapter.rewrite_chunk(
