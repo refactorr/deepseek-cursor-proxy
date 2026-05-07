@@ -68,12 +68,16 @@ SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "ec2-user@${IP}")
 
 echo "deploy target ip=${IP} sslip=${SSLIP}"
 
+RSYNC_SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=accept-new)
+RSYNC_RSH="${RSYNC_SSH[*]}"
+
 TMP_NGINX="$(mktemp)"
 sed "s/@SSLIP@/${SSLIP}/g" \
   "${REPO_ROOT}/deploy/nginx-deepseek-proxy.conf.template" \
   >"$TMP_NGINX"
 
 rsync -az --delete \
+  -e "$RSYNC_RSH" \
   --exclude '.git' \
   --exclude '.venv' \
   --exclude '__pycache__' \
@@ -108,8 +112,6 @@ sudo systemctl restart nginx
 cd ~/deepseek-cursor-proxy
 ~/.local/bin/uv sync
 
-sudo certbot --nginx -n --agree-tos -m "${CERTBOT_EMAIL}" -d "${SSLIP}" --redirect
-
 sudo tee /etc/systemd/system/deepseek-proxy.service > /dev/null <<'UNIT'
 [Unit]
 Description=DeepSeek Cursor Proxy (fork + SSE keepalive)
@@ -137,8 +139,17 @@ sudo systemctl enable deepseek-proxy
 sudo systemctl restart deepseek-proxy
 sleep 2
 sudo systemctl is-active deepseek-proxy nginx
+
+# TLS (may fail: sslip.io shared rate limits, DNS propagation, etc.)
+if sudo certbot --nginx -n --agree-tos -m "${CERTBOT_EMAIL}" -d "${SSLIP}" --redirect; then
+  echo "certbot: certificate installed for ${SSLIP}"
+else
+  echo "certbot: failed (often sslip.io LE rate limit). Use HTTP until fixed:" >&2
+  echo "  http://${IP}/v1" >&2
+fi
 REMOTE
 
 echo ""
-echo "Cursor base URL: https://${SSLIP}/v1"
-echo "Probe: curl -sS \"https://${SSLIP}/v1/models\" | head"
+echo "HTTPS (after certbot succeeds): https://${SSLIP}/v1"
+echo "HTTP (nginx :80 → proxy):       http://${IP}/v1"
+echo "Probe: curl -sS \"http://${IP}/v1/models\" -H \"Authorization: Bearer test\" | head"
