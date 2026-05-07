@@ -82,7 +82,7 @@ RSYNC_SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=accept-new)
 RSYNC_RSH="${RSYNC_SSH[*]}"
 
 TMP_NGINX="$(mktemp)"
-sed "s/@SSLIP@/${SSLIP}/g" \
+sed -e "s/@SSLIP@/${SSLIP}/g" -e "s/@PUBLIC_IP@/${IP}/g" \
   "${REPO_ROOT}/deploy/nginx-deepseek-proxy.conf.template" \
   >"$TMP_NGINX"
 

@@ -10,7 +10,7 @@ Upstream: [yxlao/deepseek-cursor-proxy](https://github.com/yxlao/deepseek-cursor
 | **SSE heartbeat / keepalive** | `server.py` sends `: dcp-keepalive` on `stream_keepalive_interval_seconds` (default **15s**; **0** disables). Config + `--stream-keepalive-interval`. |
 | **HTTPS for Cursor** | `scripts/deploy-ec2-https.sh`: **nginx** + **Let’s Encrypt** (certbot) for **`<public-ip-dashes>.sslip.io`** — public DNS maps that name to your Elastic IP without Route53. App listens **127.0.0.1:8000** behind nginx. |
 | **TCP sysctl** | `deploy/99-deepseek-proxy-tcp.conf` copied to `/etc/sysctl.d/` on deploy (`tcp_keepalive_*`). |
-| **nginx long streams** | `deploy/nginx-deepseek-proxy.conf.template`: `proxy_read_timeout` / `proxy_send_timeout` **86400s**, `proxy_buffering off`. |
+| **nginx long streams** | `deploy/nginx-deepseek-proxy.conf.template`: `server_name` includes **sslip + raw public IP** so `http://<ip>/v1` and `https://<sslip>/v1` both hit the proxy; `proxy_read_timeout` / `proxy_send_timeout` **86400s**, `proxy_buffering off`. |
 | **Process supervision** | Deploy writes `deepseek-proxy.service`: **`Restart=always`**, `network-online`, burst limits. |
 
 **sslip.io** is third-party DNS (not AWS); **Let’s Encrypt** is third-party CA. If sslip’s shared zone hits LE rate limits, retry later or use HTTP (`cursor_base_url_http` output) until certbot succeeds.

@@ -1,6 +1,7 @@
 server {
     listen 80;
-    server_name @SSLIP@;
+    # Match sslip hostname (HTTPS / certbot) and raw Elastic IP (HTTP Base URL in Cursor).
+    server_name @SSLIP@ @PUBLIC_IP@;
     client_max_body_size 50m;
     location / {
         proxy_pass http://127.0.0.1:8000;
