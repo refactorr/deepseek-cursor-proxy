@@ -18,12 +18,13 @@ resource "aws_default_subnet" "this" {
 }
 
 locals {
-  ssh_ingress_cidr   = coalesce(var.allowed_ssh_cidr, var.allowed_proxy_cidr)
   certbot_junk_email = "${var.certbot_junk_local_part}@${var.certbot_junk_domain}"
 }
 
 resource "aws_security_group" "proxy" {
   name        = "${var.instance_name}-sg"
+  # Keep this string stable. Changing description forces full SG replacement (new id), which
+  # with a fixed name can stall or take a long time while ENIs detach. Ingress below is open.
   description = "SSH + HTTP/HTTPS restricted by allowed_proxy_cidr (nginx + certbot)"
 
   vpc_id = aws_default_subnet.this.vpc_id
@@ -33,7 +34,7 @@ resource "aws_security_group" "proxy" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [local.ssh_ingress_cidr]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
@@ -41,7 +42,7 @@ resource "aws_security_group" "proxy" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = [var.allowed_proxy_cidr]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
@@ -49,7 +50,7 @@ resource "aws_security_group" "proxy" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = [var.allowed_proxy_cidr]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {

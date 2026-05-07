@@ -114,6 +114,26 @@ wait_for_ssh
 echo "run: deploying..." >&2
 TERRAFORM_CHDIR="$TF_DIR" "$REPO_ROOT/scripts/deploy-ec2-https.sh"
 
+cursor_http="$(tf_raw cursor_base_url_http)"
+cursor_https="$(tf_raw cursor_base_url_https)"
+if [[ -z "$cursor_http" || "$cursor_http" == "null" ]]; then
+  cursor_http="http://${IP}/v1"
+fi
+if [[ -z "$cursor_https" || "$cursor_https" == "null" ]]; then
+  cursor_https="https://${IP//./-}.sslip.io/v1"
+fi
+
+echo "" >&2
+echo "================================================================================" >&2
+echo "  Cursor Base URL — use on this machine (via EC2 / nginx):" >&2
+echo "" >&2
+echo "      ${cursor_http}" >&2
+echo "      ${cursor_https}" >&2
+echo "" >&2
+echo "  (Journal lines showing 127.0.0.1:8000 are the app bind on the instance only.)" >&2
+echo "================================================================================" >&2
+echo "" >&2
+
 echo "run: streaming journalctl -fu $JUNIT (Ctrl+C stops stream and instance)..." >&2
 set +e
 ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "${SSH_USER}@${IP}" \

@@ -47,9 +47,9 @@ cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 
 Junk **CERTBOT_EMAIL** is defined in Terraform only as a string (`certbot_junk_domain` + `certbot_junk_local_part`); **no mailbox** is created in AWS. Point real MX at that address elsewhere if you want to receive LE mail.
 
-Creates: **security group** (22, **80**, **443**) — **ingress is locked to `allowed_proxy_cidr`** (your public IP `/32`); **SSH** uses the same CIDR unless **`allowed_ssh_cidr`** is set. **Not** `0.0.0.0/0` (Terraform validation rejects it).
+Creates: **security group** (22, **80**, **443**) — **ingress from `0.0.0.0/0`** (no IP allowlist). The Terraform **`description`** field is left unchanged on purpose: in the AWS provider, changing it **replaces the whole security group** (slow and can appear stuck while ENIs update). Anyone on the internet can attempt SSH and hit nginx; use a strong key, keep the proxy patched, and tighten rules in production if you need to.
 
-**Instance outside Terraform:** set **`DEPLOY_EC2_HOST`** and deploy; SG on that instance must still allow your IP on **80** / **443** / **22** if you manage rules by hand.
+**Instance outside Terraform:** set **`DEPLOY_EC2_HOST`** and deploy; open **80** / **443** / **22** on that instance’s SG from the networks you use (this Terraform stack uses **0.0.0.0/0** for those ports).
 
 ---
 
