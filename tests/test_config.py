@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import stat
-from tempfile import TemporaryDirectory
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from deepseek_cursor_proxy.config import (
@@ -14,6 +14,7 @@ from deepseek_cursor_proxy.config import (
     DEFAULT_PORT,
     DEFAULT_REASONING_CACHE_MAX_AGE_SECONDS,
     DEFAULT_REASONING_CACHE_MAX_ROWS,
+    DEFAULT_STREAM_KEEPALIVE_INTERVAL_SECONDS,
     DEFAULT_THINKING,
     DEFAULT_UPSTREAM_MODEL,
     DEFAULT_VERBOSE,
@@ -45,6 +46,10 @@ class ConfigTests(unittest.TestCase):
                 DEFAULT_COLLAPSIBLE_REASONING,
             )
             self.assertIsNone(ProxyConfig().trace_dir)
+            self.assertEqual(
+                ProxyConfig().stream_keepalive_interval_seconds,
+                DEFAULT_STREAM_KEEPALIVE_INTERVAL_SECONDS,
+            )
 
     def test_missing_default_config_file_is_populated(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -63,8 +68,7 @@ class ConfigTests(unittest.TestCase):
                 config_text,
             )
             self.assertIn(
-                "reasoning_cache_max_age_seconds: "
-                f"{DEFAULT_REASONING_CACHE_MAX_AGE_SECONDS}",
+                f"reasoning_cache_max_age_seconds: {DEFAULT_REASONING_CACHE_MAX_AGE_SECONDS}",
                 config_text,
             )
             self.assertIn(
@@ -73,8 +77,11 @@ class ConfigTests(unittest.TestCase):
             )
             self.assertIn(f"ngrok: {str(DEFAULT_NGROK).lower()}", config_text)
             self.assertIn(
-                "collasible_reasoning: "
-                f"{str(DEFAULT_COLLAPSIBLE_REASONING).lower()}",
+                f"collasible_reasoning: {str(DEFAULT_COLLAPSIBLE_REASONING).lower()}",
+                config_text,
+            )
+            self.assertIn(
+                "stream_keepalive_interval_seconds:",
                 config_text,
             )
             self.assertEqual(stat.S_IMODE(config_path.stat().st_mode), 0o600)
@@ -136,6 +143,7 @@ class ConfigTests(unittest.TestCase):
                         "missing_reasoning_strategy: reject",
                         "reasoning_cache_max_age_seconds: 60",
                         "reasoning_cache_max_rows: 50",
+                        "stream_keepalive_interval_seconds: 0",
                     ]
                 ),
                 encoding="utf-8",
@@ -160,6 +168,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.missing_reasoning_strategy, "reject")
         self.assertEqual(config.reasoning_cache_max_age_seconds, 60)
         self.assertEqual(config.reasoning_cache_max_rows, 50)
+        self.assertEqual(config.stream_keepalive_interval_seconds, 0.0)
 
     def test_invalid_config_values_fall_back_to_defaults(self) -> None:
         with TemporaryDirectory() as temp_dir:

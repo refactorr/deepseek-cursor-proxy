@@ -31,6 +31,8 @@ DEFAULT_CORS = False
 DEFAULT_MISSING_REASONING_STRATEGY = "recover"
 DEFAULT_REASONING_CACHE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 DEFAULT_REASONING_CACHE_MAX_ROWS = 100_000
+# SSE comment-line pings to Cursor while upstream readline() blocks (0 disables).
+DEFAULT_STREAM_KEEPALIVE_INTERVAL_SECONDS = 15.0
 
 DEFAULT_CONFIG_HEADER = (
     "# This file was created automatically at ~/.deepseek-cursor-proxy/config.yaml."
@@ -59,6 +61,7 @@ reasoning_content_path: {REASONING_CONTENT_FILE_NAME}
 missing_reasoning_strategy: {DEFAULT_MISSING_REASONING_STRATEGY}
 reasoning_cache_max_age_seconds: {DEFAULT_REASONING_CACHE_MAX_AGE_SECONDS}
 reasoning_cache_max_rows: {DEFAULT_REASONING_CACHE_MAX_ROWS}
+stream_keepalive_interval_seconds: {DEFAULT_STREAM_KEEPALIVE_INTERVAL_SECONDS:g}
 """
 
 
@@ -204,12 +207,13 @@ class ProxyConfig:
     verbose: bool = DEFAULT_VERBOSE
     ngrok: bool = DEFAULT_NGROK
     trace_dir: Path | None = None
+    stream_keepalive_interval_seconds: float = DEFAULT_STREAM_KEEPALIVE_INTERVAL_SECONDS
 
     @classmethod
     def from_file(
         cls: type[ProxyConfig],
         config_path: str | Path | None = None,
-    ) -> "ProxyConfig":
+    ) -> ProxyConfig:
         settings, resolved_config_path = settings_from_config(config_path)
         config_dir = resolved_config_path.parent
 
@@ -282,5 +286,9 @@ class ProxyConfig:
             ngrok=as_bool(
                 setting_value(settings, "ngrok"),
                 DEFAULT_NGROK,
+            ),
+            stream_keepalive_interval_seconds=as_float(
+                setting_value(settings, "stream_keepalive_interval_seconds"),
+                DEFAULT_STREAM_KEEPALIVE_INTERVAL_SECONDS,
             ),
         )

@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass, replace
 import gzip
-from http.client import HTTPException
 import json
+import sys
+import threading
+import time
+import zlib
+from dataclasses import dataclass, replace
+from http.client import HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import sys
-import time
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
-import zlib
 
 from .config import (
     ProxyConfig,
@@ -28,12 +29,12 @@ from .logging import (
 from .reasoning_store import ReasoningStore, conversation_scope
 from .streaming import CursorReasoningDisplayAdapter, StreamAccumulator
 from .trace import TraceRequest, TraceWriter
-from .tunnel import NgrokTunnel, local_tunnel_target
 from .transform import (
     RECOVERY_NOTICE_CONTENT,
     prepare_upstream_request,
     rewrite_response_body,
 )
+from .tunnel import NgrokTunnel, local_tunnel_target
 
 
 class RequestBodyTooLarge(ValueError):
@@ -694,6 +695,35 @@ class DeepSeekProxyHandler(BaseHTTPRequestHandler):
         )
         finalized = False
         pending_recovery_notice = recovery_notice
+
+        write_lock = threading.Lock()
+
+        def client_write(body: bytes, context: str, *, flush: bool = False) -> bool:
+            with write_lock:
+                return self._write_to_client(body, context, flush=flush)
+
+        interval = self.config.stream_keepalive_interval_seconds
+        stop_keepalive = threading.Event()
+        keepalive_thread: threading.Thread | None = None
+        if interval > 0:
+
+            def _keepalive_loop() -> None:
+                while not stop_keepalive.wait(interval):
+                    if not client_write(
+                        b": dcp-keepalive\n\n",
+                        "sse stream keepalive",
+                        flush=True,
+                    ):
+                        stop_keepalive.set()
+                        break
+
+            keepalive_thread = threading.Thread(
+                target=_keepalive_loop,
+                name="dcp-sse-keepalive",
+                daemon=True,
+            )
+            keepalive_thread.start()
+
         try:
             while True:
                 try:
@@ -722,13 +752,16 @@ class DeepSeekProxyHandler(BaseHTTPRequestHandler):
                     usage = chunk_usage
                 if trace is not None:
                     trace.record_stream_chunk(line, rewritten)
-                if not self._write_to_client(
+                if not client_write(
                     rewritten, "sending streaming response chunk", flush=True
                 ):
                     return ProxyResponseResult(False, usage)
                 if finalized:
                     break
         finally:
+            stop_keepalive.set()
+            if keepalive_thread is not None:
+                keepalive_thread.join(timeout=min(interval, 5.0) + 2.0)
             # Store partial reasoning whenever the stream exits without
             # the upstream's [DONE] terminator (client disconnect, upstream
             # read failure, exception). Without this, a Stop pressed mid-stream
@@ -882,8 +915,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--reasoning-content-path",
         type=Path,
         help=(
-            "SQLite reasoning_content cache path, "
-            f"default {default_reasoning_content_path()}"
+            f"SQLite reasoning_content cache path, default {default_reasoning_content_path()}"
         ),
     )
     parser.add_argument(
@@ -941,6 +973,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--request-timeout",
         type=float,
         help="Upstream request timeout in seconds, default from config or 300",
+    )
+    parser.add_argument(
+        "--stream-keepalive-interval",
+        type=float,
+        default=None,
+        dest="stream_keepalive_interval_seconds",
+        help=(
+            "While streaming, send SSE comment keepalive lines this often (seconds); "
+            "0 disables. Default from config or 15."
+        ),
     )
     parser.add_argument(
         "--max-request-body-bytes",
@@ -1272,6 +1314,10 @@ def main(argv: list[str] | None = None) -> int:
         updates["cors"] = args.cors
     if args.request_timeout is not None:
         updates["request_timeout"] = args.request_timeout
+    if args.stream_keepalive_interval_seconds is not None:
+        updates["stream_keepalive_interval_seconds"] = (
+            args.stream_keepalive_interval_seconds
+        )
     if args.max_request_body_bytes is not None:
         updates["max_request_body_bytes"] = args.max_request_body_bytes
     if args.reasoning_cache_max_age_seconds is not None:
@@ -1355,6 +1401,13 @@ def main(argv: list[str] | None = None) -> int:
         LOG.info("upstream_url: %s/chat/completions", config.upstream_base_url)
     LOG.info("local_base_url: %s", local_base_url)
     LOG.info("api_base_url: %s", api_base_url)
+    if config.stream_keepalive_interval_seconds > 0:
+        LOG.info(
+            "stream_keepalive_interval_seconds: %s",
+            config.stream_keepalive_interval_seconds,
+        )
+    else:
+        LOG.info("stream_keepalive_interval_seconds: off")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
