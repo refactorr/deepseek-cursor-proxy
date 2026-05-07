@@ -8,7 +8,7 @@ This proxy can also help **other applications and coding agents** beyond Cursor 
 ## What It Does
 
 - ✅ Injects `reasoning_content` into outgoing tool-call requests since Cursor does not include the field, restoring previously cached reasoning from regular and streamed DeepSeek responses. See [DeepSeek docs](https://api-docs.deepseek.com/guides/thinking_mode#tool-calls) for more details.
-- ✅ Displays DeepSeek's thinking tokens in Cursor by forwarding them into Cursor-visible collapsible Markdown `<details><summary>Thinking</summary>...</details>` blocks.
+- ✅ Displays DeepSeek's thinking tokens in Cursor by forwarding them into Cursor-visible Markdown blockquotes (`> 💭 …`) in the assistant `content` stream.
 - ✅ Starts an ngrok tunnel so Cursor can reach the local proxy through a public HTTPS URL.
 - ✅ Provides other compatibility fixes to make DeepSeek models run well in Cursor.
 

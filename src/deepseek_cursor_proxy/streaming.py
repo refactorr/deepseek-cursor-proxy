@@ -7,10 +7,7 @@ from typing import Any
 from .reasoning_store import ReasoningStore
 
 
-THINKING_BLOCK_START = "<think>\n"
-THINKING_BLOCK_END = "\n</think>\n\n"
-COLLAPSIBLE_THINKING_BLOCK_START = "<details>\n<summary>Thinking</summary>\n\n"
-COLLAPSIBLE_THINKING_BLOCK_END = "\n</details>\n\n"
+THINKING_STREAM_GAP = "\n\n"
 
 
 @dataclass
@@ -212,17 +209,12 @@ class StreamAccumulator:
 
 
 class CursorReasoningDisplayAdapter:
-    """Mirror reasoning_content into content for Cursor's visible thinking UI path."""
+    """Mirror reasoning_content into content as Markdown blockquotes for Cursor."""
 
-    def __init__(self, collapsible: bool = True) -> None:
+    def __init__(self, collapsible: bool = False) -> None:
         self._open_choices: set[int] = set()
         self._last_chunk_metadata: dict[str, Any] = {}
-        self._block_start = (
-            COLLAPSIBLE_THINKING_BLOCK_START if collapsible else THINKING_BLOCK_START
-        )
-        self._block_end = (
-            COLLAPSIBLE_THINKING_BLOCK_END if collapsible else THINKING_BLOCK_END
-        )
+        _ = collapsible  # Kept for call-site compatibility; display is always blockquotes.
 
     def rewrite_chunk(self, chunk: dict[str, Any]) -> None:
         self._remember_chunk_metadata(chunk)
@@ -239,29 +231,33 @@ class CursorReasoningDisplayAdapter:
                 delta = {}
                 raw_choice["delta"] = delta
 
-            mirrored_parts: list[str] = []
-            reasoning_content = delta.get("reasoning_content")
-            if isinstance(reasoning_content, str) and reasoning_content:
+            parts: list[str] = []
+
+            rc = delta.get("reasoning_content")
+            if isinstance(rc, str) and rc:
+                quoted = rc.replace("\n", "\n> ")
                 if index not in self._open_choices:
-                    mirrored_parts.append(self._block_start)
+                    parts.append(f"> 💭 {quoted}")
                     self._open_choices.add(index)
-                mirrored_parts.append(reasoning_content)
+                else:
+                    parts.append(f"> {quoted}")
 
             existing_content = delta.get("content")
-            should_close = index in self._open_choices and (
-                bool(existing_content)
-                or bool(delta.get("tool_calls"))
-                or raw_choice.get("finish_reason") is not None
-            )
-            if should_close:
-                mirrored_parts.append(self._block_end)
+            ec_str = existing_content if isinstance(existing_content, str) else ""
+            has_real_content = bool(ec_str)
+            has_tool_calls = bool(delta.get("tool_calls"))
+            has_finish = raw_choice.get("finish_reason") is not None
+
+            if index in self._open_choices and (
+                has_real_content or has_tool_calls or has_finish
+            ):
+                parts.append(THINKING_STREAM_GAP)
+                parts.append(ec_str)
                 self._open_choices.discard(index)
 
-            if not mirrored_parts:
+            if not parts:
                 continue
-            if isinstance(existing_content, str):
-                mirrored_parts.append(existing_content)
-            delta["content"] = "".join(mirrored_parts)
+            delta["content"] = "".join(parts)
 
     def flush_chunk(self, model: str) -> dict[str, Any] | None:
         if not self._open_choices:
@@ -270,7 +266,7 @@ class CursorReasoningDisplayAdapter:
         choices = [
             {
                 "index": index,
-                "delta": {"content": self._block_end},
+                "delta": {"content": THINKING_STREAM_GAP},
                 "finish_reason": None,
             }
             for index in sorted(self._open_choices)
@@ -299,11 +295,8 @@ def fold_reasoning_into_content(
     collapsible: bool,
 ) -> None:
     """Mirror `reasoning_content` into the visible `content` field for
-    non-streaming responses, matching the streaming `<details>` layout."""
-    block_start = (
-        COLLAPSIBLE_THINKING_BLOCK_START if collapsible else THINKING_BLOCK_START
-    )
-    block_end = COLLAPSIBLE_THINKING_BLOCK_END if collapsible else THINKING_BLOCK_END
+    non-streaming responses (Markdown blockquotes)."""
+    _ = collapsible  # Kept for API compatibility; display is always blockquotes.
     choices = response_payload.get("choices")
     if not isinstance(choices, list):
         return
@@ -317,9 +310,8 @@ def fold_reasoning_into_content(
         if not isinstance(reasoning, str) or not reasoning:
             continue
         content = message.get("content")
+        quoted = reasoning.replace("\n", "\n> ")
         message["content"] = (
-            block_start
-            + reasoning
-            + block_end
+            f"> 💭 {quoted}{THINKING_STREAM_GAP}"
             + (content if isinstance(content, str) else "")
         )

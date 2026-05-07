@@ -76,6 +76,12 @@ IP="$(discover_ip)" || exit 1
 SSLIP="${IP//./-}.sslip.io"
 SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "ec2-user@${IP}")
 
+# Baked into systemd ExecStart (must match defaults in src/deepseek_cursor_proxy/config.py).
+# Override when invoking deploy: PROXY_REQUEST_TIMEOUT=... ./scripts/deploy-ec2-https.sh
+PROXY_UPSTREAM_BASE_URL="${PROXY_UPSTREAM_BASE_URL:-https://api.deepseek.com}"
+PROXY_REQUEST_TIMEOUT="${PROXY_REQUEST_TIMEOUT:-86400}"
+PROXY_MAX_BODY_BYTES="${PROXY_MAX_BODY_BYTES:-134217728}"
+
 echo "deploy target ip=${IP} sslip=${SSLIP}"
 
 RSYNC_SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=accept-new)
@@ -122,21 +128,22 @@ sudo systemctl restart nginx
 cd ~/deepseek-cursor-proxy
 ~/.local/bin/uv sync
 
-sudo tee /etc/systemd/system/deepseek-proxy.service > /dev/null <<'UNIT'
+sudo tee /etc/systemd/system/deepseek-proxy.service > /dev/null <<UNIT
 [Unit]
 Description=DeepSeek Cursor Proxy (fork + SSE keepalive)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=20
 
 [Service]
 Type=simple
 User=ec2-user
 WorkingDirectory=/home/ec2-user/deepseek-cursor-proxy
-ExecStart=/home/ec2-user/.local/bin/uv run deepseek-cursor-proxy --no-ngrok --host 127.0.0.1 --port 8000
+# CLI overrides stale ~/.deepseek-cursor-proxy/config.yaml from older deploys.
+ExecStart=/home/ec2-user/.local/bin/uv run deepseek-cursor-proxy --no-ngrok --host 127.0.0.1 --port 8000 --display-reasoning --no-collapsible-reasoning --base-url ${PROXY_UPSTREAM_BASE_URL} --request-timeout ${PROXY_REQUEST_TIMEOUT} --max-request-body-bytes ${PROXY_MAX_BODY_BYTES}
 Restart=always
 RestartSec=5
-StartLimitIntervalSec=300
-StartLimitBurst=20
 StandardOutput=journal
 StandardError=journal
 

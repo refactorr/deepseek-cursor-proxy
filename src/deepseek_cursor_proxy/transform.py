@@ -92,6 +92,10 @@ CURSOR_THINKING_BLOCK_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+CURSOR_BLOCKQUOTE_THINKING_PREFIX_RE = re.compile(
+    r"\A>\s*💭[^\n]*(?:\n>[^\n]*)*",
+)
+
 RECOVERY_NOTICE_TEXT = "[deepseek-cursor-proxy] Refreshed reasoning_content history."
 RECOVERY_NOTICE_CONTENT = f"{RECOVERY_NOTICE_TEXT}\n\n"
 RECOVERY_SYSTEM_CONTENT = (
@@ -157,7 +161,9 @@ def extract_text_content(content: Any) -> str | None:
 
 
 def strip_cursor_thinking_blocks(content: str) -> str:
-    return CURSOR_THINKING_BLOCK_RE.sub("", content).lstrip("\r\n")
+    cleaned = CURSOR_THINKING_BLOCK_RE.sub("", content).lstrip("\r\n")
+    cleaned = CURSOR_BLOCKQUOTE_THINKING_PREFIX_RE.sub("", cleaned).lstrip("\r\n")
+    return cleaned
 
 
 def normalize_tool_call(tool_call: Any) -> dict[str, Any]:
@@ -938,7 +944,7 @@ def rewrite_response_body(
     prior_messages: list[dict[str, Any]] | None = None,
     recording_contexts: list[tuple[str, list[dict[str, Any]]]] | None = None,
     display_reasoning: bool = False,
-    collapsible_reasoning: bool = True,
+    collapsible_reasoning: bool = False,
 ) -> bytes:
     response_payload = json.loads(body.decode("utf-8"))
     if isinstance(response_payload, dict):

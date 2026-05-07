@@ -22,11 +22,14 @@ DEFAULT_UPSTREAM_MODEL = "deepseek-v4-pro"
 DEFAULT_THINKING = "enabled"
 DEFAULT_REASONING_EFFORT = "max"
 DEFAULT_DISPLAY_REASONING = True
-DEFAULT_COLLAPSIBLE_REASONING = True
+# Kept for config compatibility; mirrored thinking always uses Markdown blockquotes
+# (`> 💭 …`) in content. When true, verbose logs note that this flag is ignored.
+DEFAULT_COLLAPSIBLE_REASONING = False
 DEFAULT_NGROK = True
 DEFAULT_VERBOSE = False
-DEFAULT_REQUEST_TIMEOUT = 300.0
-DEFAULT_MAX_REQUEST_BODY_BYTES = 20 * 1024 * 1024
+# Upstream urllib read timeout (align with nginx proxy_read_timeout 86400s on EC2 deploy).
+DEFAULT_REQUEST_TIMEOUT = 86400.0
+DEFAULT_MAX_REQUEST_BODY_BYTES = 128 * 1024 * 1024
 DEFAULT_CORS = False
 DEFAULT_MISSING_REASONING_STRATEGY = "recover"
 DEFAULT_REASONING_CACHE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
@@ -47,6 +50,7 @@ model: {DEFAULT_UPSTREAM_MODEL}
 thinking: {DEFAULT_THINKING}
 reasoning_effort: {DEFAULT_REASONING_EFFORT}
 display_reasoning: {str(DEFAULT_DISPLAY_REASONING).lower()}
+# collapsible_reasoning is ignored; thinking is always mirrored as Markdown blockquotes.
 collasible_reasoning: {str(DEFAULT_COLLAPSIBLE_REASONING).lower()}
 
 host: {DEFAULT_HOST}

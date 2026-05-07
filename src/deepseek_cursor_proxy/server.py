@@ -17,6 +17,13 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from .config import (
+    DEFAULT_COLLAPSIBLE_REASONING,
+    DEFAULT_DISPLAY_REASONING,
+    DEFAULT_MAX_REQUEST_BODY_BYTES,
+    DEFAULT_REASONING_EFFORT,
+    DEFAULT_REQUEST_TIMEOUT,
+    DEFAULT_STREAM_KEEPALIVE_INTERVAL_SECONDS,
+    DEFAULT_THINKING,
     ProxyConfig,
     default_config_path,
     default_reasoning_content_path,
@@ -945,7 +952,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--collapsible-reasoning",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Use Markdown details for mirrored reasoning when display is enabled",
+        help="Legacy flag; mirrored reasoning always uses Markdown blockquotes",
     )
     parser.add_argument(
         "--collasible-reasoning",
@@ -972,7 +979,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--request-timeout",
         type=float,
-        help="Upstream request timeout in seconds, default from config or 300",
+        help="Upstream request timeout in seconds, default from config or 86400",
     )
     parser.add_argument(
         "--stream-keepalive-interval",
@@ -1328,8 +1335,27 @@ def main(argv: list[str] | None = None) -> int:
         updates["reasoning_cache_max_rows"] = args.reasoning_cache_max_rows
     if args.missing_reasoning_strategy is not None:
         updates["missing_reasoning_strategy"] = args.missing_reasoning_strategy
-    if updates:
-        config = replace(config, **updates)
+
+    # When CLI omits a flag, apply fork defaults (override stale ~/.deepseek-cursor-proxy/config.yaml).
+    # Matches EC2 systemd ExecStart. Explicit CLI flags still win.
+    if args.display_reasoning is None:
+        updates["display_reasoning"] = DEFAULT_DISPLAY_REASONING
+    if args.collapsible_reasoning is None:
+        updates["collapsible_reasoning"] = DEFAULT_COLLAPSIBLE_REASONING
+    if args.request_timeout is None:
+        updates["request_timeout"] = DEFAULT_REQUEST_TIMEOUT
+    if args.max_request_body_bytes is None:
+        updates["max_request_body_bytes"] = DEFAULT_MAX_REQUEST_BODY_BYTES
+    if args.thinking is None:
+        updates["thinking"] = DEFAULT_THINKING
+    if args.reasoning_effort is None:
+        updates["reasoning_effort"] = DEFAULT_REASONING_EFFORT
+    if args.stream_keepalive_interval_seconds is None:
+        updates["stream_keepalive_interval_seconds"] = (
+            DEFAULT_STREAM_KEEPALIVE_INTERVAL_SECONDS
+        )
+
+    config = replace(config, **updates)
 
     configure_logging(verbose=config.verbose)
     warn_if_insecure_upstream(config.upstream_base_url)
@@ -1383,9 +1409,9 @@ def main(argv: list[str] | None = None) -> int:
     if config.verbose:
         display_reasoning = "off"
         if config.display_reasoning:
-            display_reasoning = (
-                "on (collapsible)" if config.collapsible_reasoning else "on"
-            )
+            display_reasoning = "on (Markdown blockquotes)"
+            if config.collapsible_reasoning:
+                display_reasoning += " [collapsible_reasoning ignored]"
         LOG.info("display_reasoning: %s", display_reasoning)
         LOG.info("missing_reasoning_strategy: %s", config.missing_reasoning_strategy)
         LOG.info("reasoning_cache: %s", config.reasoning_content_path)

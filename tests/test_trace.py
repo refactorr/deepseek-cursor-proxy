@@ -285,7 +285,8 @@ class TraceIntegrationTests(unittest.TestCase):
             trace["upstream"]["stream"]["chunks"][0]["line"],
         )
         self.assertIn(
-            "<details>", trace["cursor_response"]["stream"]["chunks"][0]["line"]
+            "> 💭",
+            trace["cursor_response"]["stream"]["chunks"][0]["line"],
         )
 
     def test_captures_recovery_diagnostics(self) -> None:

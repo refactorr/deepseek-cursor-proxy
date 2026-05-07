@@ -945,14 +945,16 @@ class StreamingDisplayTests(unittest.TestCase):
             ThreadingHTTPServer(("127.0.0.1", 0), _ReasoningStreamHandler)
         )
         self.store = ReasoningStore(":memory:")
-        self.proxy = _start_proxy(self.upstream.url, self.store)
+        self.proxy = _start_proxy(
+            self.upstream.url, self.store, collapsible_reasoning=True
+        )
 
     def tearDown(self) -> None:
         self.proxy.close()
         self.upstream.close()
         self.store.close()
 
-    def test_streaming_response_mirrors_reasoning_into_details_block(self) -> None:
+    def test_streaming_response_mirrors_reasoning_into_blockquotes(self) -> None:
         request = Request(
             f"{self.proxy.url}/v1/chat/completions",
             data=json.dumps(
@@ -978,20 +980,21 @@ class StreamingDisplayTests(unittest.TestCase):
         ]
         self.assertEqual(
             chunks[0]["choices"][0]["delta"]["content"],
-            "<details>\n<summary>Thinking</summary>\n\nNeed ",
+            "> 💭 Need ",
         )
         self.assertEqual(
             chunks[2]["choices"][0]["delta"]["content"],
-            "\n</details>\n\nFinal.",
+            "\n\nFinal.",
         )
 
 
 class NonStreamingDisplayTests(_StrictUpstreamCase):
-    def test_non_streaming_response_mirrors_reasoning_into_details_block(
+    config_overrides = {"collapsible_reasoning": True}
+
+    def test_non_streaming_response_mirrors_reasoning_into_blockquotes(
         self,
     ) -> None:
-        """The README claims thinking tokens are displayed in Cursor; this
-        must hold for non-streaming responses too, not only streaming ones."""
+        """Thinking is mirrored into content as Markdown blockquotes (streaming matches)."""
         status, response = _post(
             f"{self.proxy.url}/v1/chat/completions",
             {
@@ -1007,7 +1010,7 @@ class NonStreamingDisplayTests(_StrictUpstreamCase):
         content = response["choices"][0]["message"]["content"]
         self.assertEqual(
             content,
-            f"<details>\n<summary>Thinking</summary>\n\n{THINKING_1_1}\n</details>\n\n",
+            f"> 💭 {THINKING_1_1}\n\n",
         )
 
 
@@ -1282,7 +1285,9 @@ class StreamingCacheTimingTests(unittest.TestCase):
             ThreadingHTTPServer(("127.0.0.1", 0), _SlowToolStreamHandler)
         )
         self.store = ReasoningStore(":memory:")
-        self.proxy = _start_proxy(self.upstream.url, self.store)
+        self.proxy = _start_proxy(
+            self.upstream.url, self.store, collapsible_reasoning=True
+        )
 
     def tearDown(self) -> None:
         self.proxy.close()
@@ -1354,10 +1359,9 @@ class StreamingCacheTimingTests(unittest.TestCase):
             )
             response.read()
         self.assertEqual(status, 200, payload)
-        self.assertEqual(
-            payload["choices"][0]["message"]["content"].split("</details>")[-1],
-            "\n\nfollow-up accepted",
-        )
+        msg_content = payload["choices"][0]["message"]["content"]
+        self.assertTrue(msg_content.endswith("follow-up accepted"))
+        self.assertIn("> 💭", msg_content)
 
 
 if __name__ == "__main__":

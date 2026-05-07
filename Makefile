@@ -46,6 +46,9 @@ deploy-https: ## nginx + TLS on sslip.io; optional CERTBOT_EMAIL= (else terrafor
 	DEPLOY_EC2_SSH_KEY="$(DEPLOY_EC2_SSH_KEY)" \
 	DEPLOY_TERRAFORM_DIR="$(DEPLOY_TERRAFORM_DIR)" \
 	TERRAFORM_CHDIR="$(TERRAFORM_CHDIR)" \
+	PROXY_UPSTREAM_BASE_URL="$(PROXY_UPSTREAM_BASE_URL)" \
+	PROXY_REQUEST_TIMEOUT="$(PROXY_REQUEST_TIMEOUT)" \
+	PROXY_MAX_BODY_BYTES="$(PROXY_MAX_BODY_BYTES)" \
 	$(SH)/deploy-ec2-https.sh
 
 stream-logs: ## ./scripts/stream-proxy-logs.sh  (optional: ARGS='1.2.3.4' or DEPLOY_EC2_HOST=)
@@ -61,6 +64,9 @@ run: ## EC2 dev: start if stopped, deploy HTTPS, stream journal; stop instance o
 	DEPLOY_EC2_SSH_KEY="$(DEPLOY_EC2_SSH_KEY)" \
 	DEPLOY_TERRAFORM_DIR="$(DEPLOY_TERRAFORM_DIR)" \
 	TERRAFORM_CHDIR="$(TERRAFORM_CHDIR)" \
+	PROXY_UPSTREAM_BASE_URL="$(PROXY_UPSTREAM_BASE_URL)" \
+	PROXY_REQUEST_TIMEOUT="$(PROXY_REQUEST_TIMEOUT)" \
+	PROXY_MAX_BODY_BYTES="$(PROXY_MAX_BODY_BYTES)" \
 	$(SH)/run.sh
 
 start: run ## Alias for `make run`

@@ -12,8 +12,8 @@ variable "instance_name" {
 
 variable "instance_type" {
   type        = string
-  description = "EC2 instance type."
-  default     = "t3.small"
+  description = "EC2 instance type (more RAM/CPU for heavy proxy + uv workloads)."
+  default     = "t3.medium"
 }
 
 variable "key_name" {
@@ -24,7 +24,7 @@ variable "key_name" {
 variable "root_volume_gb" {
   type        = number
   description = "Root gp3 volume size (GiB)."
-  default     = 30
+  default     = 50
 }
 
 variable "certbot_junk_domain" {
