@@ -27,14 +27,32 @@ variable "root_volume_gb" {
   default     = 30
 }
 
-variable "allowed_ssh_cidr" {
+variable "allowed_proxy_cidr" {
   type        = string
-  description = "CIDR allowed for SSH (port 22). Tighten in production."
-  default     = "0.0.0.0/0"
+  description = "Only this CIDR may reach nginx on :80 and :443 (your public IPv4/32, e.g. from curl -4 ifconfig.me)."
+  nullable    = false
+
+  validation {
+    condition     = !contains(["0.0.0.0/0", "::/0"], var.allowed_proxy_cidr)
+    error_message = "allowed_proxy_cidr must not be open internet; use your public IP/32 (e.g. 203.0.113.7/32)."
+  }
 }
 
-variable "allowed_http_cidr" {
+variable "allowed_ssh_cidr" {
   type        = string
-  description = "CIDR allowed for HTTP/HTTPS (80/443) to nginx."
-  default     = "0.0.0.0/0"
+  default     = null
+  description = "CIDR for SSH :22. Defaults to allowed_proxy_cidr when null (same machine admin + Cursor)."
+  nullable    = true
+}
+
+variable "certbot_junk_domain" {
+  type        = string
+  description = "Domain for junk Let's Encrypt / certbot -m contact (no mailbox created here)."
+  default     = "daggrai.com"
+}
+
+variable "certbot_junk_local_part" {
+  type        = string
+  description = "Local part of junk ACME contact email (before @)."
+  default     = "acme-le-junk"
 }

@@ -17,9 +17,14 @@ resource "aws_default_subnet" "this" {
   availability_zone = "${var.aws_region}a"
 }
 
+locals {
+  ssh_ingress_cidr   = coalesce(var.allowed_ssh_cidr, var.allowed_proxy_cidr)
+  certbot_junk_email = "${var.certbot_junk_local_part}@${var.certbot_junk_domain}"
+}
+
 resource "aws_security_group" "proxy" {
   name        = "${var.instance_name}-sg"
-  description = "SSH + HTTP/HTTPS for deepseek-cursor-proxy (nginx TLS)"
+  description = "SSH + HTTP/HTTPS restricted by allowed_proxy_cidr (nginx + certbot)"
 
   vpc_id = aws_default_subnet.this.vpc_id
 
@@ -28,23 +33,23 @@ resource "aws_security_group" "proxy" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.allowed_ssh_cidr]
+    cidr_blocks = [local.ssh_ingress_cidr]
   }
 
   ingress {
-    description = "HTTP (certbot / redirect)"
+    description = "HTTP ACME and nginx to proxy"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = [var.allowed_http_cidr]
+    cidr_blocks = [var.allowed_proxy_cidr]
   }
 
   ingress {
-    description = "HTTPS (Cursor -> nginx -> proxy)"
+    description = "HTTPS (after certbot)"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = [var.allowed_http_cidr]
+    cidr_blocks = [var.allowed_proxy_cidr]
   }
 
   egress {

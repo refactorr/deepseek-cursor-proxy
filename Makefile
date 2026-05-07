@@ -7,7 +7,7 @@ SH := $(ROOT)/scripts
 
 .PHONY: help \
 	tf-init tf-fmt tf-fmt-check tf-validate tf-plan tf-apply tf-destroy tf-output \
-	deploy-https stream-logs
+	deploy-https stream-logs run start stop
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-22s %s\n", $$1, $$2}'
@@ -23,25 +23,24 @@ tf-fmt: ## ./scripts/terraform.sh fmt -recursive
 tf-fmt-check: ## ./scripts/terraform.sh fmt -check -recursive
 	$(TF) fmt -check -recursive
 
-tf-validate: ## ./scripts/terraform.sh validate
-	$(TF) validate
+tf-validate: ## validate; optional TERRAFORM_VAR_FILE=
+	TERRAFORM_VAR_FILE="$(TERRAFORM_VAR_FILE)" $(TF) validate
 
-tf-plan: ## ./scripts/terraform.sh plan  (pass ARGS='-var-file=...')
-	$(TF) plan $(ARGS)
+tf-plan: ## plan; optional TERRAFORM_VAR_FILE=; ARGS for extra flags (e.g. -var key_name=my-key)
+	TERRAFORM_VAR_FILE="$(TERRAFORM_VAR_FILE)" $(TF) plan $(ARGS)
 
-tf-apply: ## ./scripts/terraform.sh apply
-	$(TF) apply $(ARGS)
+tf-apply: ## apply; optional TERRAFORM_VAR_FILE=; ARGS e.g. -auto-approve -var key_name=my-key
+	TERRAFORM_VAR_FILE="$(TERRAFORM_VAR_FILE)" $(TF) apply $(ARGS)
 
-tf-destroy: ## ./scripts/terraform.sh destroy
-	$(TF) destroy $(ARGS)
+tf-destroy: ## destroy; optional TERRAFORM_VAR_FILE=; ARGS e.g. -auto-approve
+	TERRAFORM_VAR_FILE="$(TERRAFORM_VAR_FILE)" $(TF) destroy $(ARGS)
 
-tf-output: ## ./scripts/terraform.sh output  (pass ARGS='-raw public_ip')
+tf-output: ## ./scripts/terraform.sh output  (e.g. ARGS='-raw cursor_base_url_https')
 	$(TF) output $(ARGS)
 
 # --- App / ops scripts ---
 
-deploy-https: ## ./scripts/deploy-ec2-https.sh  (requires CERTBOT_EMAIL=, optional DEPLOY_*)
-	@test -n "$(CERTBOT_EMAIL)" || (printf '%s\n' 'Set CERTBOT_EMAIL= for Let'\''s Encrypt' >&2; exit 1)
+deploy-https: ## nginx + TLS on sslip.io; optional CERTBOT_EMAIL= (else terraform output certbot_junk_email)
 	CERTBOT_EMAIL="$(CERTBOT_EMAIL)" \
 	DEPLOY_EC2_HOST="$(DEPLOY_EC2_HOST)" \
 	DEPLOY_EC2_SSH_KEY="$(DEPLOY_EC2_SSH_KEY)" \
@@ -55,3 +54,18 @@ stream-logs: ## ./scripts/stream-proxy-logs.sh  (optional: ARGS='1.2.3.4' or DEP
 	DEPLOY_TERRAFORM_DIR="$(DEPLOY_TERRAFORM_DIR)" \
 	TERRAFORM_CHDIR="$(TERRAFORM_CHDIR)" \
 	$(SH)/stream-proxy-logs.sh $(ARGS)
+
+run: ## EC2 dev: start if stopped, deploy HTTPS, stream journal; stop instance on exit
+	CERTBOT_EMAIL="$(CERTBOT_EMAIL)" \
+	SKIP_STOP_ON_EXIT="$(SKIP_STOP_ON_EXIT)" \
+	DEPLOY_EC2_SSH_KEY="$(DEPLOY_EC2_SSH_KEY)" \
+	DEPLOY_TERRAFORM_DIR="$(DEPLOY_TERRAFORM_DIR)" \
+	TERRAFORM_CHDIR="$(TERRAFORM_CHDIR)" \
+	$(SH)/run.sh
+
+start: run ## Alias for `make run`
+
+stop: ## Stop Terraform EC2 instance if running (no-op if already stopped/stopping)
+	DEPLOY_TERRAFORM_DIR="$(DEPLOY_TERRAFORM_DIR)" \
+	TERRAFORM_CHDIR="$(TERRAFORM_CHDIR)" \
+	$(SH)/stop.sh

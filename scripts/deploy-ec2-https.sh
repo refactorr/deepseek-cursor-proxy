@@ -1,22 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Push this repo to EC2, apply TCP sysctl, nginx + Let's Encrypt (sslip.io),
-# systemd unit (proxy on 127.0.0.1:8000 behind TLS). Heartbeat stays in app
-# (stream_keepalive_interval_seconds default 15).
+# Push this repo to EC2: sysctl, nginx (:80 for ACME + reverse proxy to 127.0.0.1:8000),
+# Let's Encrypt via certbot for <ip-dashes>.sslip.io, uv sync, systemd.
+# sslip.io is public DNS mapping that hostname to your Elastic IP (no AWS Route53 required for the name).
 #
-# Prereqs: docker (for Terraform output discovery), aws, ssh, rsync; CERTBOT_EMAIL; SSH key.
+# Prereqs: docker (Terraform output), aws, ssh, rsync; ACME contact email; SSH key.
+# CERTBOT_EMAIL: env, ~/.bash_profile (sourced if unset), else terraform output certbot_junk_email.
 #
 #   export CERTBOT_EMAIL='you@example.com'
 #   ./scripts/deploy-ec2-https.sh
 #
-# Host resolution (first match):
-#   1) DEPLOY_EC2_HOST
-#   2) ./scripts/terraform.sh output -raw public_ip (Docker; ./terraform if state exists)
-#   3) aws: running instance with tag Name=DEPLOY_INSTANCE_NAME (default deepseek-cursor-proxy)
-#
-# Env: DEPLOY_EC2_SSH_KEY (default ~/deepseek-proxy-key.pem),
-#      DEPLOY_AWS_REGION / AWS_REGION, DEPLOY_INSTANCE_NAME
+# Host resolution: DEPLOY_EC2_HOST, terraform output public_ip, or AWS tag Name=...
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TF_DIR="${TERRAFORM_CHDIR:-${DEPLOY_TERRAFORM_DIR:-$REPO_ROOT/terraform}}"
@@ -24,8 +19,23 @@ KEY="${DEPLOY_EC2_SSH_KEY:-${DEEPSEEK_PROXY_SSH_KEY:-$HOME/deepseek-proxy-key.pe
 REGION="${DEPLOY_AWS_REGION:-${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}}"
 TAG="${DEPLOY_INSTANCE_NAME:-${DEEPSEEK_PROXY_INSTANCE_NAME:-deepseek-cursor-proxy}}"
 
+if [[ -z "${CERTBOT_EMAIL:-}" && -f "${HOME}/.bash_profile" ]]; then
+  set +eu
+  set +o pipefail 2>/dev/null || true
+  # shellcheck disable=SC1090
+  source "${HOME}/.bash_profile" 2>/dev/null || true
+  set -euo pipefail
+fi
+
 if [[ -z "${CERTBOT_EMAIL:-}" ]]; then
-  echo "error: set CERTBOT_EMAIL for Let's Encrypt" >&2
+  tf_email=""
+  if tf_email="$(TERRAFORM_CHDIR="$TF_DIR" "$REPO_ROOT/scripts/terraform.sh" output -raw certbot_junk_email 2>/dev/null)" \
+    && [[ -n "$tf_email" && "$tf_email" != "null" ]]; then
+    CERTBOT_EMAIL="$tf_email"
+  fi
+fi
+if [[ -z "${CERTBOT_EMAIL:-}" ]]; then
+  echo "error: CERTBOT_EMAIL unset — export it, add to ~/.bash_profile, or ensure 'terraform output certbot_junk_email' succeeds (Docker + state in ${TF_DIR})" >&2
   exit 1
 fi
 if [[ ! -f "$KEY" ]]; then
@@ -140,16 +150,47 @@ sudo systemctl restart deepseek-proxy
 sleep 2
 sudo systemctl is-active deepseek-proxy nginx
 
-# TLS (may fail: sslip.io shared rate limits, DNS propagation, etc.)
+# TLS (sslip.io + Let's Encrypt; may hit shared sslip.io LE rate limits)
 if sudo certbot --nginx -n --agree-tos -m "${CERTBOT_EMAIL}" -d "${SSLIP}" --redirect; then
   echo "certbot: certificate installed for ${SSLIP}"
 else
-  echo "certbot: failed (often sslip.io LE rate limit). Use HTTP until fixed:" >&2
+  echo "certbot: failed (e.g. sslip.io Let's Encrypt rate limit). Use HTTP until retry succeeds:" >&2
   echo "  http://${IP}/v1" >&2
 fi
 REMOTE
 
+HTTPS_BASE="https://${SSLIP}/v1"
+HTTP_BASE="http://${IP}/v1"
+# Give nginx / LE a moment; probe from this machine (same path Cursor uses).
+sleep 3
+https_code="000"
+https_code="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 25 \
+  "${HTTPS_BASE}/models" -H "Authorization: Bearer test" 2>/dev/null || true)"
+http_code="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 15 \
+  "${HTTP_BASE}/models" -H "Authorization: Bearer test" 2>/dev/null || true)"
+
 echo ""
-echo "HTTPS (after certbot succeeds): https://${SSLIP}/v1"
-echo "HTTP (nginx :80 → proxy):       http://${IP}/v1"
-echo "Probe: curl -sS \"http://${IP}/v1/models\" -H \"Authorization: Bearer test\" | head"
+echo "================================================================================"
+echo "  CURSOR CUSTOM API BASE URL (paste into Cursor → model provider Base URL):"
+if [[ "$https_code" == "200" ]]; then
+  echo ""
+  echo "    ${HTTPS_BASE}"
+  echo ""
+  echo "  HTTPS OK (sslip + certbot). Use your DeepSeek API key in Cursor; model e.g. deepseek-v4-pro."
+elif [[ "$http_code" == "200" ]]; then
+  echo ""
+  echo "    ${HTTP_BASE}"
+  echo ""
+  echo "  HTTPS probe returned ${https_code} (not 200). Proxy is up on HTTP; fix certbot/LE then use:"
+  echo "    ${HTTPS_BASE}"
+else
+  echo ""
+  echo "    ${HTTPS_BASE}   (preferred once TLS works)"
+  echo "    ${HTTP_BASE}    (fallback)"
+  echo ""
+  echo "  Probes from this machine failed (HTTPS=${https_code} HTTP=${http_code}). Check SG :80/:443, wait for DNS, or SSH ec2-user@${IP}"
+fi
+echo "================================================================================"
+echo ""
+echo "Sanity check: curl -sS \"${HTTP_BASE}/models\" -H \"Authorization: Bearer test\" | head -c 200"
+echo "HTTPS check:  curl -sS \"${HTTPS_BASE}/models\" -H \"Authorization: Bearer test\" | head -c 200  (expect 200 when TLS up)"
