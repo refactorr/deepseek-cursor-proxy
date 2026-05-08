@@ -8,7 +8,7 @@ This proxy can also help **other applications and coding agents** beyond Cursor 
 ## What It Does
 
 - ✅ Injects `reasoning_content` into outgoing tool-call requests since Cursor does not include the field, restoring previously cached reasoning from regular and streamed DeepSeek responses. See [DeepSeek docs](https://api-docs.deepseek.com/guides/thinking_mode#tool-calls) for more details.
-- ✅ Displays DeepSeek's thinking tokens in Cursor by forwarding them into Cursor-visible Markdown blockquotes (`> 💭 …`) in the assistant `content` stream.
+- ✅ Optionally mirrors thinking into assistant **`content`** as Markdown **blockquotes** (`>` lines, no emoji) so it reads distinctly in the chat; **`reasoning_content`** is still forwarded on the wire. Use **`--no-display-reasoning`** to skip mirroring and pass **`reasoning_content`** only.
 - ✅ Starts an ngrok tunnel so Cursor can reach the local proxy through a public HTTPS URL.
 - ✅ Provides other compatibility fixes to make DeepSeek models run well in Cursor.
 
@@ -90,7 +90,7 @@ On the first run, `deepseek-cursor-proxy` will create:
 Persistent settings live in `~/.deepseek-cursor-proxy/config.yaml`. You can also override the config with command-line flags, for example:
 
 ```bash
-# Hide thinking tokens displaying in Cursor UI
+# Pass reasoning_content only (no blockquote mirror into content)
 deepseek-cursor-proxy --no-display-reasoning
 
 # Show full incoming and outgoing requests
@@ -137,7 +137,7 @@ Select `deepseek-v4-pro` in Cursor and use chat or agent mode as usual.
 - **Core fix:** DeepSeek [thinking-mode tool calls](https://api-docs.deepseek.com/guides/thinking_mode#tool-calls) require the complete **multi-round** `reasoning_content` chain to be sent back in later requests. Cursor omits that field, causing a 400 error. The proxy (`Cursor -> ngrok -> proxy -> DeepSeek API`) stores DeepSeek's original `reasoning_content` and patches missing blocks back into outgoing tool-call history.
 - **Multi-conversation isolation:** To avoid collisions across concurrent conversations, the proxy scopes cache keys by a SHA-256 hash of the canonical conversation prefix (roles, content, and tool calls, excluding `reasoning_content`) plus the upstream model, configuration, and an API-key hash. Different threads get different scopes, so reused tool-call IDs do not collide. Byte-identical cloned histories produce identical scopes.
 - **Context caching compatibility:** The proxy preserves compatibility by never injecting synthetic thread IDs, timestamps, or cache-control messages. It restores `reasoning_content` as the exact original string, so repeated prefixes remain intact for [DeepSeek context cache](https://api-docs.deepseek.com/guides/kv_cache). Cache hit rates are logged in the terminal output.
-- **Additional compatibility fixes:** Beyond reasoning repair, the proxy converts legacy `functions`/`function_call` fields to `tools`/`tool_choice`, preserves required and named tool-choice semantics, normalizes `reasoning_effort` aliases, strips mirrored thinking display blocks from assistant content, flattens multi-part content arrays to plain text, and mirrors `reasoning_content` into Cursor-visible Markdown details blocks.
+- **Additional compatibility fixes:** Beyond reasoning repair, the proxy converts legacy `functions`/`function_call` fields to `tools`/`tool_choice`, preserves required and named tool-choice semantics, normalizes `reasoning_effort` aliases, strips mirrored-thinking markup (details, redacted tags, blockquotes, legacy HTML span) from assistant `content` when sent back upstream, flattens multi-part content arrays to plain text, and by default mirrors `reasoning_content` into `content` as Markdown blockquotes unless `--no-display-reasoning` is set.
 
 ## Development
 

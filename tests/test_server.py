@@ -32,9 +32,11 @@ from deepseek_cursor_proxy.logging import (
 )
 from deepseek_cursor_proxy.reasoning_store import ReasoningStore
 from deepseek_cursor_proxy.server import (
+    MODEL_LIST_CONTEXT_FIELDS,
     DeepSeekProxyHandler,
     DeepSeekProxyServer,
     build_arg_parser,
+    format_duration_human,
     read_response_body,
     summarize_chat_payload,
 )
@@ -118,6 +120,27 @@ def _make_handler_stub(wfile: object, **config: object) -> DeepSeekProxyHandler:
 # ---------------------------------------------------------------------------
 # CLI / pure helpers
 # ---------------------------------------------------------------------------
+
+
+class FormatDurationHumanTests(unittest.TestCase):
+    def test_millis_under_one_second(self) -> None:
+        self.assertEqual(format_duration_human(0), "0ms")
+        self.assertEqual(format_duration_human(0.0004), "0ms")
+        self.assertEqual(format_duration_human(0.5), "500ms")
+        self.assertEqual(format_duration_human(0.999), "999ms")
+
+    def test_seconds_under_one_minute(self) -> None:
+        self.assertEqual(format_duration_human(1), "1s")
+        self.assertEqual(format_duration_human(1.03), "1s")
+        self.assertEqual(format_duration_human(1.08), "1.1s")
+        self.assertEqual(format_duration_human(45), "45s")
+        self.assertEqual(format_duration_human(59.4), "59.4s")
+
+    def test_minutes_at_or_beyond_sixty_seconds(self) -> None:
+        self.assertEqual(format_duration_human(60), "1m")
+        self.assertEqual(format_duration_human(61), "1m 1s")
+        self.assertEqual(format_duration_human(125), "2m 5s")
+        self.assertEqual(format_duration_human(3600), "60m")
 
 
 class CliAndHelperTests(unittest.TestCase):
@@ -554,7 +577,7 @@ class HttpBoundaryTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("┌ request model=deepseek-v4-pro effort=max messages=1", output)
         self.assertIn("├ context status=ok reasoning_context=0", output)
-        self.assertIn("└ stats", output)
+        self.assertRegex(output, r"└ stats\s+duration=\S+\s+prompt=")
         self.assertNotIn(" tools=", output)
         self.assertNotIn("├ send", output)
         self.assertNotIn("hi", output.split("┌ request")[1].split("\n")[0])
@@ -577,6 +600,21 @@ class HttpBoundaryTests(unittest.TestCase):
         with urlopen(f"{self.proxy.url}/healthz", timeout=2) as response:
             self.assertEqual(response.status, 200)
             self.assertEqual(json.loads(response.read())["ok"], True)
+
+    def test_models_list_reports_context_aliases(self) -> None:
+        for path in ("/v1/models", "/models"):
+            with urlopen(f"{self.proxy.url}{path}", timeout=2) as response:
+                self.assertEqual(response.status, 200)
+                body = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(body["object"], "list")
+            self.assertGreater(len(body["data"]), 0)
+            for entry in body["data"]:
+                for key, expected in MODEL_LIST_CONTEXT_FIELDS.items():
+                    self.assertEqual(
+                        entry.get(key),
+                        expected,
+                        f"{path} model {entry.get('id')!r} missing or wrong {key!r}",
+                    )
 
 
 if __name__ == "__main__":

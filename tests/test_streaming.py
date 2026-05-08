@@ -330,7 +330,7 @@ class CursorReasoningDisplayAdapterTests(unittest.TestCase):
         reasoning_delta = reasoning_chunk["choices"][0]["delta"]
         answer_delta = answer_chunk["choices"][0]["delta"]
         self.assertEqual(reasoning_delta["reasoning_content"], "Need context.")
-        self.assertEqual(reasoning_delta["content"], "> 💭 Need context.")
+        self.assertEqual(reasoning_delta["content"], "> Need context.")
         self.assertEqual(answer_delta["content"], "\n\nFinal answer.")
 
     def test_mirrors_reasoning_content_blockquotes_when_not_collapsible(self) -> None:
@@ -358,7 +358,8 @@ class CursorReasoningDisplayAdapterTests(unittest.TestCase):
         adapter.rewrite_chunk(answer_chunk)
 
         self.assertEqual(
-            reasoning_chunk["choices"][0]["delta"]["content"], "> 💭 Need context."
+            reasoning_chunk["choices"][0]["delta"]["content"],
+            "> Need context.",
         )
         self.assertEqual(
             answer_chunk["choices"][0]["delta"]["content"],
@@ -372,7 +373,7 @@ class CursorReasoningDisplayAdapterTests(unittest.TestCase):
         adapter = CursorReasoningDisplayAdapter()
         adapter.rewrite_chunk(c0)
         adapter.rewrite_chunk(c1)
-        self.assertEqual(c0["choices"][0]["delta"]["content"], "> 💭 The")
+        self.assertEqual(c0["choices"][0]["delta"]["content"], "> The")
         self.assertEqual(c1["choices"][0]["delta"]["content"], " user")
 
     def test_closes_thinking_block_before_tool_calls(self) -> None:
@@ -408,7 +409,8 @@ class CursorReasoningDisplayAdapterTests(unittest.TestCase):
         adapter.rewrite_chunk(tool_chunk)
 
         self.assertEqual(
-            tool_chunk["choices"][0]["delta"]["content"], "\n\n"
+            tool_chunk["choices"][0]["delta"]["content"],
+            "\n\n",
         )
 
     def test_flush_chunk_closes_unfinished_thinking_block_at_done(self) -> None:
@@ -433,7 +435,8 @@ class CursorReasoningDisplayAdapterTests(unittest.TestCase):
         assert closing_chunk is not None
         self.assertEqual(closing_chunk["model"], "deepseek-v4-pro")
         self.assertEqual(
-            closing_chunk["choices"][0]["delta"]["content"], "\n\n"
+            closing_chunk["choices"][0]["delta"]["content"],
+            "\n\n",
         )
         self.assertIsNone(adapter.flush_chunk("deepseek-v4-pro"))
 
@@ -456,7 +459,7 @@ class FoldReasoningTests(unittest.TestCase):
         fold_reasoning_into_content(payload, collapsible=True)
         self.assertEqual(
             payload["choices"][0]["message"]["content"],
-            "> 💭 thinking\n\nanswer",
+            "> thinking\n\nanswer",
         )
 
     def test_fold_reasoning_skips_empty_reasoning(self) -> None:

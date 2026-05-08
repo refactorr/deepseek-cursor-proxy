@@ -978,14 +978,12 @@ class StreamingDisplayTests(unittest.TestCase):
             for line in body.splitlines()
             if line.startswith("data: {")
         ]
-        self.assertEqual(
-            chunks[0]["choices"][0]["delta"]["content"],
-            "> 💭 Need ",
-        )
-        self.assertEqual(
-            chunks[2]["choices"][0]["delta"]["content"],
-            "\n\nFinal.",
-        )
+        d0 = chunks[0]["choices"][0]["delta"]
+        self.assertEqual(d0.get("reasoning_content"), "Need ")
+        self.assertEqual(d0.get("content"), "> Need ")
+        d2 = chunks[2]["choices"][0]["delta"]
+        self.assertEqual(d2.get("content"), "\n\nFinal.")
+        self.assertNotIn("reasoning_content", d2)
 
 
 class NonStreamingDisplayTests(_StrictUpstreamCase):
@@ -994,7 +992,7 @@ class NonStreamingDisplayTests(_StrictUpstreamCase):
     def test_non_streaming_response_mirrors_reasoning_into_blockquotes(
         self,
     ) -> None:
-        """Thinking is mirrored into content as Markdown blockquotes (streaming matches)."""
+        """Thinking is mirrored into content as Markdown blockquotes."""
         status, response = _post(
             f"{self.proxy.url}/v1/chat/completions",
             {
@@ -1006,12 +1004,10 @@ class NonStreamingDisplayTests(_StrictUpstreamCase):
             },
         )
         self.assertEqual(status, 200, response)
-        # Turn 1.1 has empty content + reasoning + tool calls.
-        content = response["choices"][0]["message"]["content"]
-        self.assertEqual(
-            content,
-            f"> 💭 {THINKING_1_1}\n\n",
-        )
+        message = response["choices"][0]["message"]
+        self.assertEqual(message.get("reasoning_content"), THINKING_1_1)
+        quoted = THINKING_1_1.replace("\n", "\n> ")
+        self.assertEqual(message.get("content"), f"> {quoted}\n\n")
 
 
 # ---------------------------------------------------------------------------
@@ -1361,7 +1357,7 @@ class StreamingCacheTimingTests(unittest.TestCase):
         self.assertEqual(status, 200, payload)
         msg_content = payload["choices"][0]["message"]["content"]
         self.assertTrue(msg_content.endswith("follow-up accepted"))
-        self.assertIn("> 💭", msg_content)
+        self.assertIn("> post-tool", msg_content)
 
 
 if __name__ == "__main__":

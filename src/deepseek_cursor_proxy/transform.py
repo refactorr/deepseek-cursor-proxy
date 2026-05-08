@@ -92,9 +92,34 @@ CURSOR_THINKING_BLOCK_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+# Legacy mirrored thinking (`> 💭`); strip so old history does not reach upstream.
 CURSOR_BLOCKQUOTE_THINKING_PREFIX_RE = re.compile(
     r"\A>\s*💭[^\n]*(?:\n>[^\n]*)*",
 )
+# Older HTML mirror; strip if present in echoed history.
+CURSOR_THINKING_DISPLAY_SPAN_RE = re.compile(
+    r'\A<span[^>]*\bdata-dcp-reasoning="1"[^>]*>[\s\S]*?</span>\s*',
+    re.IGNORECASE,
+)
+
+
+def strip_leading_mirror_blockquote_reasoning(content: str) -> str:
+    """Strip mirrored thinking: only ``> ...`` lines then ``\\n\\n`` before body."""
+    if not content.startswith(">"):
+        return content
+    parts = content.split("\n\n", 1)
+    if len(parts) != 2:
+        return content
+    thinking, rest = parts[0], parts[1]
+    if not thinking:
+        return content
+    for line in thinking.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not stripped.startswith(">"):
+            return content
+    return rest.lstrip("\r\n")
 
 RECOVERY_NOTICE_TEXT = "[deepseek-cursor-proxy] Refreshed reasoning_content history."
 RECOVERY_NOTICE_CONTENT = f"{RECOVERY_NOTICE_TEXT}\n\n"
@@ -162,7 +187,9 @@ def extract_text_content(content: Any) -> str | None:
 
 def strip_cursor_thinking_blocks(content: str) -> str:
     cleaned = CURSOR_THINKING_BLOCK_RE.sub("", content).lstrip("\r\n")
+    cleaned = CURSOR_THINKING_DISPLAY_SPAN_RE.sub("", cleaned).lstrip("\r\n")
     cleaned = CURSOR_BLOCKQUOTE_THINKING_PREFIX_RE.sub("", cleaned).lstrip("\r\n")
+    cleaned = strip_leading_mirror_blockquote_reasoning(cleaned)
     return cleaned
 
 

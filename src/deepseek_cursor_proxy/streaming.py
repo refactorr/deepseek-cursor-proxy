@@ -10,6 +10,17 @@ from .reasoning_store import ReasoningStore
 THINKING_STREAM_GAP = "\n\n"
 
 
+def _blockquote_reasoning_fragment(rc: str, *, is_opening: bool) -> str:
+    """Turn a reasoning delta fragment into Markdown blockquote lines.
+
+    Only the first fragment of a choice is prefixed with ``> `` at column 0;
+    later fragments append in-stream (avoids ``The> user`` token-split bugs).
+    Internal newlines become new quoted lines.
+    """
+    quoted = rc.replace("\n", "\n> ")
+    return ("> " + quoted) if is_opening else quoted
+
+
 @dataclass
 class StreamingChoice:
     role: str = "assistant"
@@ -209,7 +220,7 @@ class StreamAccumulator:
 
 
 class CursorReasoningDisplayAdapter:
-    """Mirror reasoning_content into content as Markdown blockquotes for Cursor."""
+    """Mirror reasoning_content into Markdown blockquote lines in `content`."""
 
     def __init__(self, collapsible: bool = False) -> None:
         self._open_choices: set[int] = set()
@@ -235,15 +246,10 @@ class CursorReasoningDisplayAdapter:
 
             rc = delta.get("reasoning_content")
             if isinstance(rc, str) and rc:
-                # Only the first fragment opens the blockquote (`> 💭`). Later
-                # fragments append in the same paragraph; prefixing each chunk
-                # with `> ` breaks token-by-token streams (`The> user> wants`).
-                quoted = rc.replace("\n", "\n> ")
-                if index not in self._open_choices:
-                    parts.append(f"> 💭 {quoted}")
+                opening = index not in self._open_choices
+                parts.append(_blockquote_reasoning_fragment(rc, is_opening=opening))
+                if opening:
                     self._open_choices.add(index)
-                else:
-                    parts.append(quoted)
 
             existing_content = delta.get("content")
             ec_str = existing_content if isinstance(existing_content, str) else ""
@@ -297,8 +303,8 @@ def fold_reasoning_into_content(
     response_payload: dict[str, Any],
     collapsible: bool,
 ) -> None:
-    """Mirror `reasoning_content` into the visible `content` field for
-    non-streaming responses (Markdown blockquotes)."""
+    """Mirror `reasoning_content` into the visible `content` field (Markdown
+    blockquotes)."""
     _ = collapsible  # Kept for API compatibility; display is always blockquotes.
     choices = response_payload.get("choices")
     if not isinstance(choices, list):
@@ -315,6 +321,6 @@ def fold_reasoning_into_content(
         content = message.get("content")
         quoted = reasoning.replace("\n", "\n> ")
         message["content"] = (
-            f"> 💭 {quoted}{THINKING_STREAM_GAP}"
+            f"> {quoted}{THINKING_STREAM_GAP}"
             + (content if isinstance(content, str) else "")
         )

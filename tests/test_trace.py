@@ -284,10 +284,9 @@ class TraceIntegrationTests(unittest.TestCase):
             "reasoning_content",
             trace["upstream"]["stream"]["chunks"][0]["line"],
         )
-        self.assertIn(
-            "> 💭",
-            trace["cursor_response"]["stream"]["chunks"][0]["line"],
-        )
+        line0 = trace["cursor_response"]["stream"]["chunks"][0]["line"]
+        self.assertIn("reasoning_content", line0)
+        self.assertIn('"> think"', line0)
 
     def test_captures_recovery_diagnostics(self) -> None:
         """A request that triggers cold-cache recovery records the recovery

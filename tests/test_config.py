@@ -45,6 +45,7 @@ class ConfigTests(unittest.TestCase):
                 ProxyConfig().collapsible_reasoning,
                 DEFAULT_COLLAPSIBLE_REASONING,
             )
+            self.assertTrue(ProxyConfig().display_reasoning)
             self.assertIsNone(ProxyConfig().trace_dir)
             self.assertEqual(
                 ProxyConfig().stream_keepalive_interval_seconds,

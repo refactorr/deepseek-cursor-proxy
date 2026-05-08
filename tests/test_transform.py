@@ -74,6 +74,16 @@ class ContentHelpersTests(unittest.TestCase):
             strip_cursor_thinking_blocks("> 💭 plan\n> cont\n\nanswer"),
             "answer",
         )
+        legacy_span = (
+            '<span data-dcp-reasoning="1" '
+            'style="color: var(--vscode-descriptionForeground); white-space: pre-wrap">'
+            "plan\ncont</span>\n\nanswer"
+        )
+        self.assertEqual(strip_cursor_thinking_blocks(legacy_span), "answer")
+        self.assertEqual(
+            strip_cursor_thinking_blocks("> plan\n> cont\n\nanswer"),
+            "answer",
+        )
 
     def test_strip_cursor_thinking_blocks_preserves_unrelated_details(self) -> None:
         kept = "<details><summary>Diff</summary>\nrelevant\n</details>"

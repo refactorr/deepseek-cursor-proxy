@@ -48,6 +48,24 @@ class RequestBodyTooLarge(ValueError):
     pass
 
 
+# Tokens advertised on GET /models and GET /v1/models (common JSON aliases).
+MODEL_LIST_CONTEXT_TOKENS = 100_000
+MODEL_LIST_CONTEXT_FIELDS: dict[str, int] = {
+    "context_length": MODEL_LIST_CONTEXT_TOKENS,
+    "max_context_tokens": MODEL_LIST_CONTEXT_TOKENS,
+    "context_window": MODEL_LIST_CONTEXT_TOKENS,
+    "max_context": MODEL_LIST_CONTEXT_TOKENS,
+    "max_sequence_length": MODEL_LIST_CONTEXT_TOKENS,
+    "max_model_len": MODEL_LIST_CONTEXT_TOKENS,
+    "max_content_length": MODEL_LIST_CONTEXT_TOKENS,
+    "n_ctx": MODEL_LIST_CONTEXT_TOKENS,
+    "contextLength": MODEL_LIST_CONTEXT_TOKENS,
+    "maxContextTokens": MODEL_LIST_CONTEXT_TOKENS,
+    "contextWindow": MODEL_LIST_CONTEXT_TOKENS,
+    "maxContext": MODEL_LIST_CONTEXT_TOKENS,
+}
+
+
 @dataclass
 class ProxyResponseResult:
     sent: bool
@@ -334,7 +352,7 @@ class DeepSeekProxyHandler(BaseHTTPRequestHandler):
                     )
                     return
                 spinner.stop()
-                log_stats_summary(sent_response.usage)
+                log_stats_summary(sent_response.usage, started)
                 self._finish_trace(
                     trace,
                     "completed",
@@ -471,6 +489,7 @@ class DeepSeekProxyHandler(BaseHTTPRequestHandler):
                 "object": "model",
                 "created": created,
                 "owned_by": "deepseek",
+                **MODEL_LIST_CONTEXT_FIELDS,
             }
             for model_id in model_ids
         ]
@@ -946,13 +965,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--display-reasoning",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Mirror reasoning_content into Cursor-visible content",
+        help=(
+            "Mirror reasoning_content into assistant content as Markdown blockquotes "
+            "(default on). Use --no-display-reasoning to pass reasoning_content only."
+        ),
     )
     parser.add_argument(
         "--collapsible-reasoning",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Legacy flag; mirrored reasoning always uses Markdown blockquotes",
+        help="Legacy flag; ignored when using Markdown blockquote mirror",
     )
     parser.add_argument(
         "--collasible-reasoning",
@@ -1026,6 +1048,29 @@ def elapsed_ms(started: float) -> int:
     return round((time.monotonic() - started) * 1000)
 
 
+def format_duration_human(elapsed_sec: float) -> str:
+    """Format elapsed wall time for logs: ms if under 1s, seconds under 1m, else minutes."""
+    sec = max(0.0, float(elapsed_sec))
+    if sec < 1.0:
+        return f"{round(sec * 1000)}ms"
+    if sec < 60.0:
+        if abs(sec - round(sec)) < 0.05:
+            return f"{round(sec)}s"
+        return f"{sec:.1f}s"
+    minutes = int(sec // 60)
+    sub = int(round(sec - minutes * 60))
+    if sub == 60:
+        minutes += 1
+        sub = 0
+    if sub:
+        return f"{minutes}m {sub}s"
+    return f"{minutes}m"
+
+
+def format_request_duration(started: float) -> str:
+    return format_duration_human(time.monotonic() - started)
+
+
 def log_json(label: str, payload: Any) -> None:
     LOG.info(
         "%s:\n%s",
@@ -1095,9 +1140,10 @@ def log_send_summary(prepared: Any) -> None:
     )
 
 
-def log_stats_summary(usage: dict[str, Any] | None) -> None:
+def log_stats_summary(usage: dict[str, Any] | None, started: float) -> None:
     LOG.info(
-        "└ stats   prompt=%s output=%s reasoning=%s cache_hit=%s",
+        "└ stats   duration=%s prompt=%s output=%s reasoning=%s cache_hit=%s",
+        format_request_duration(started),
         format_usage_count(usage, "prompt_tokens"),
         format_usage_count(usage, "completion_tokens"),
         format_count(reasoning_token_count(usage)),
@@ -1407,9 +1453,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if config.verbose:
-        display_reasoning = "off"
+        display_reasoning = "off (reasoning_content only)"
         if config.display_reasoning:
-            display_reasoning = "on (Markdown blockquotes)"
+            display_reasoning = "on (Markdown blockquotes in content)"
             if config.collapsible_reasoning:
                 display_reasoning += " [collapsible_reasoning ignored]"
         LOG.info("display_reasoning: %s", display_reasoning)

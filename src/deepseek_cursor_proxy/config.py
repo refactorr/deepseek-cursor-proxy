@@ -21,9 +21,10 @@ DEFAULT_UPSTREAM_BASE_URL = "https://api.deepseek.com"
 DEFAULT_UPSTREAM_MODEL = "deepseek-v4-pro"
 DEFAULT_THINKING = "enabled"
 DEFAULT_REASONING_EFFORT = "max"
+# True: mirror thinking into assistant `content` as Markdown blockquotes (`>`).
+# False: pass `reasoning_content` only on the wire (no mirror).
 DEFAULT_DISPLAY_REASONING = True
-# Kept for config compatibility; mirrored thinking always uses Markdown blockquotes
-# (`> 💭 …`) in content. When true, verbose logs note that this flag is ignored.
+# Kept for config compatibility; collapsible only affects legacy verbose labels.
 DEFAULT_COLLAPSIBLE_REASONING = False
 DEFAULT_NGROK = True
 DEFAULT_VERBOSE = False
@@ -50,7 +51,7 @@ model: {DEFAULT_UPSTREAM_MODEL}
 thinking: {DEFAULT_THINKING}
 reasoning_effort: {DEFAULT_REASONING_EFFORT}
 display_reasoning: {str(DEFAULT_DISPLAY_REASONING).lower()}
-# collapsible_reasoning is ignored; thinking is always mirrored as Markdown blockquotes.
+# Legacy typo key for collapsible_reasoning (details mirror; unused for blockquotes).
 collasible_reasoning: {str(DEFAULT_COLLAPSIBLE_REASONING).lower()}
 
 host: {DEFAULT_HOST}
